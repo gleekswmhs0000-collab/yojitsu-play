@@ -1,0 +1,70 @@
+<!doctype html><html lang="ja"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"><meta name="apple-mobile-web-app-title" content="余日">
+<meta name="theme-color" content="#05060a"><meta name="robots" content="noindex, nofollow">
+<link rel="apple-touch-icon" href="vendor/icon-180.png"><link rel="manifest" href="manifest.webmanifest">
+<title>余日</title>
+<style>
+@font-face{font-family:"Klee One";font-weight:600;src:url(vendor/fonts/KleeOne-SemiBold.ttf)}
+:root{color-scheme:dark}
+html,body{margin:0;height:100%;background:#05060a;color:#f3eee2;font:16px/1.6 system-ui,-apple-system,"Hiragino Sans",sans-serif;overflow:hidden}
+main{min-height:100%;display:grid;place-items:center;padding:16px;box-sizing:border-box;background:radial-gradient(ellipse at 22% 18%,rgba(214,150,60,.28),transparent 55%)}
+form{width:min(100%,360px);display:grid;gap:12px;justify-items:center;text-align:center}
+h1{margin:0;font-family:"Klee One",serif;font-weight:600;font-size:56px;letter-spacing:.3em;margin-right:-.3em;line-height:1.1}
+h1 small{display:block;font:12px/1.8 system-ui,sans-serif;letter-spacing:.6em;margin-right:-.6em;color:#c9c1ad}
+p{margin:0;font-size:14px;color:#c9c1ad}
+input[type=password]{width:100%;box-sizing:border-box;font-size:18px;padding:12px 14px;border-radius:8px;border:1px solid rgba(244,186,74,.55);background:#0c0f18;color:#f3eee2;text-align:center;letter-spacing:.08em}
+input[type=password]:focus{outline:2px solid #f4ba4a;outline-offset:2px}
+label{font-size:13px;color:#c9c1ad;display:flex;gap:8px;align-items:center}
+button{font:inherit;font-size:17px;font-weight:600;letter-spacing:.2em;color:#14100a;background:#f4ba4a;border:0;border-radius:8px;padding:10px 28px;min-height:46px;cursor:pointer}
+button:disabled{opacity:.6}
+.err{color:#ff8f7a;min-height:1.6em}
+</style></head><body><main>
+<form id="f" autocomplete="off">
+<h1>余日<small>YOJITSU</small></h1>
+<p>合言葉を入れてください</p>
+<input id="pw" type="password" inputmode="text" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="合言葉" required>
+<label><input id="keep" type="checkbox" checked>この端末で覚える</label>
+<button id="go" type="submit">ひらく</button>
+<p class="err" id="msg" role="status"></p>
+</form></main>
+<script>
+(() => {
+  const SALT = 'C77kr8wUSriAME8/nSsCuw==', ITER = 310000, VER = '26.4', KEY = 'yojitsu.key';
+  const $ = (id) => document.getElementById(id), msg = $('msg'), go = $('go');
+  const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+  const say = (t) => { msg.textContent = t; };
+  if (!window.crypto || !crypto.subtle || typeof DecompressionStream === 'undefined') { say('この端末のブラウザでは開けません。iOS / ブラウザを新しくしてください。'); go.disabled = true; return; }
+  const data = fetch('data/yojitsu.bin?v=' + encodeURIComponent(VER), { cache: 'no-cache' }).then((r) => { if (!r.ok) throw new Error('fetch'); return r.arrayBuffer(); });
+  data.catch(() => {});
+  async function keyFrom(pw) {
+    const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pw.normalize('NFKC').trim()), 'PBKDF2', false, ['deriveKey']);
+    return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(SALT), iterations: ITER, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, true, ['decrypt']);
+  }
+  async function open(key, ok) {
+    const buf = await data;
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: buf.slice(0, 12) }, key, buf.slice(12)); // 合言葉がちがうと、ここで失敗する
+    if (ok) await ok();
+    const html = await new Response(new Blob([pt]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+    document.open(); document.write(html); document.close();
+  }
+  const store = { get() { try { return localStorage.getItem(KEY); } catch (e) { return null; } }, set(v) { try { localStorage.setItem(KEY, v); } catch (e) { } }, del() { try { localStorage.removeItem(KEY); } catch (e) { } } };
+  const saved = store.get();
+  if (saved) { // 覚えた鍵があれば、そのまま開く
+    say('読みこみ中…'); go.disabled = true;
+    crypto.subtle.importKey('raw', b64(saved), 'AES-GCM', false, ['decrypt']).then((k) => open(k)).catch(() => { store.del(); say(''); go.disabled = false; });
+  }
+  $('f').addEventListener('submit', async (e) => {
+    e.preventDefault(); const pw = $('pw').value; if (!pw) return;
+    go.disabled = true; say('たしかめています…');
+    try {
+      const key = await keyFrom(pw);
+      try { await data; } catch (er) { say('読みこめませんでした。電波を確かめて、開きなおしてください。'); go.disabled = false; return; }
+      const raw = new Uint8Array(await crypto.subtle.exportKey('raw', key));
+      say('読みこみ中…');
+      await open(key, () => { if ($('keep').checked) store.set(btoa(String.fromCharCode(...raw))); });
+    } catch (er) { if (document.getElementById('f')) { say('合言葉がちがいます。'); go.disabled = false; $('pw').select(); } }
+  });
+})();
+</script></body></html>
