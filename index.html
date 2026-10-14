@@ -31,7 +31,7 @@ button:disabled{opacity:.6}
 </form></main>
 <script>
 (() => {
-  const SALT = 'C77kr8wUSriAME8/nSsCuw==', ITER = 310000, VER = '26.7', KEY = 'yojitsu.key';
+  const SALT = 'C77kr8wUSriAME8/nSsCuw==', ITER = 310000, VER = '27', KEY = 'yojitsu.key';
   const $ = (id) => document.getElementById(id), msg = $('msg'), go = $('go');
   const b64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
   const say = (t) => { msg.textContent = t; };
